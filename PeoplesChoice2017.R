@@ -16,6 +16,36 @@ library(patchwork)
 robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
 robotstxt::paths_allowed("https://mnm.be/mnm50/dezesongstemdejijhetafgelopenjaartvaakstdemnm50")
 robotstxt::paths_allowed("https://open.spotify.com/embed/user/radio1be/playlist/5aeEaRJfIFF6lsxoN2IbRD")
+robotstxt::paths_allowed("https://qmusic.be/hitlijsten/favoriete-100-2017")
+
+
+
+#function to scrap info
+scrape_music <- function(html, css_artist, css_title, css_ranking) {
+  html_page <- read_html(html)
+  
+  #extracting song info
+  artist <- html_page %>%
+    html_nodes(css = css_artist) %>%
+    html_text() %>%
+    tolower()
+  
+  #extracting artist info
+  title <- html_page %>%
+    html_nodes(css = css_title) %>%
+    html_text() %>%
+    tolower()
+  
+  #extracting ranking
+  ranking <- html_page %>%
+    html_nodes(css = css_ranking) %>%
+    html_text() %>%
+    as.numeric()
+  
+  #making a dataframe
+  df <- data.frame(ranking, artist, title, stringsAsFactors = FALSE)
+  return(df)
+}
 
 
 
@@ -27,31 +57,11 @@ robotstxt::paths_allowed("https://open.spotify.com/embed/user/radio1be/playlist/
 system("./phantomjs/bin/phantomjs scrape_stubru.js")
 
 
-#scrape the local site
-stubru_html <- read_html("scrape_stubru.html")
+#scraping studio brussels
+stubru <- scrape_music(html = "scrape_stubru.html", css_artist = ".song-title",
+                            css_title = ".song-name", css_ranking=".song-position")
+colnames(studiobrussels) <- c("stubru_ranking", "artist", "title")
 
-#extract the song info
-stubru_artist <- stubru_html %>%
-  html_nodes(css =".song-title") %>%
-  html_text() %>%
-  tolower()
-
-
-stubru_title <- stubru_html %>%
-  html_nodes(css =".song-name") %>%
-  html_text() %>%
-  tolower()
-
-
-stubru_ranking <- stubru_html %>%
-  html_nodes(css =".song-position") %>%
-  html_text() %>%
-  as.numeric()
-
-
-#making a dataframe for studio brussels
-stubru <- data.frame(stubru_ranking, stubru_artist, stubru_title, stringsAsFactors = FALSE)
-colnames(stubru) <- c("stubru_ranking", "artist", "title")
 
 
 #######
@@ -63,30 +73,27 @@ colnames(stubru) <- c("stubru_ranking", "artist", "title")
 system("./phantomjs/bin/phantomjs scrape_mnm.js")
 
 
-#scrape the local site
-mnm_html <- read_html("scrape_mnm.html")
-
-#extract the song info
-mnm_title <- mnm_html %>%
-  html_nodes(css =".song-title") %>%
-  html_text() %>%
-  tolower()
-
-
-mnm_artist <- mnm_html %>%
-  html_nodes(css =".song-name") %>%
-  html_text() %>%
-  tolower()
-
-
-mnm_ranking <- mnm_html %>%
-  html_nodes(css =".song-position") %>%
-  html_text() %>%
-  as.numeric()
-
-
-mnm <- data.frame(mnm_ranking, mnm_artist, mnm_title, stringsAsFactors = FALSE)
+#scraping mnm
+mnm <- scrape_music(html = "scrape_mnm.html", css_artist = ".song-name",
+                       css_title = ".song-title", css_ranking=".song-position")
 colnames(mnm) <- c("mnm_ranking", "artist", "title")
+
+
+
+#######
+#MNM
+#######
+
+#generated a phantomJS script to create a rendered local html site
+system("./phantomjs/bin/phantomjs scrape_qmusic.js")
+
+
+#scraping mnm
+qmusic <- scrape_music(html = "scrape_qmusic.html", css_artist = ".title-bar",
+                    css_title = ".subtitle", css_ranking=".hitlist-position")
+colnames(qmusic) <- c("qmusic_ranking", "artist", "title")
+qmusic$artist <- str_replace_all(qmusic$artist, "\\\n", "")
+qmusic$title <- str_replace_all(qmusic$title, "\\\n", "")
 
 
 
@@ -120,10 +127,14 @@ radio1$radio1_ranking <- as.numeric(radio1$radio1_ranking)
 
 
 
+
+
+
 #commonalities
 stubru %>%
   semi_join(radio1, by="title") %>%
-  semi_join(mnm, by="title")
+  semi_join(mnm, by="title") %>%
+  semi_join(qmusic, by="title")
 
 
 stubru %>%
@@ -134,6 +145,9 @@ stubru %>%
 
 mnm %>%
   semi_join(radio1, by="title")
+
+mnm %>%
+  semi_join(qmusic, by="title")
 
 
 #joining them all.
