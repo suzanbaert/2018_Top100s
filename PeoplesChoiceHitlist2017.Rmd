@@ -1,0 +1,323 @@
+---
+title: "PeoplesChoiceHitlist2017"
+output: html_document
+---
+
+At the end of the year, everyone seems to be making lists. And radio stations are no exceptions.  
+Many of our radiostation have a weekly "people's choice" hitlist. Throughout the week, people submit their top 3 recent songs and that gets turned into a hitlist. At the end of the year, they collapse all those weekly lists into a Year list.  
+I find this one quite interesting because it's not dependent on what people actually bought, but at what the audience of those radio stations want to hear more of.
+  
+<br>
+
+# About the data
+I took  different radio stations:
+
+ * Radio 1: The most serious of our public broadcast stations. It's aimed at current affairs, politics, news, ... 
+ * Studio Brussels: Formerly known as the "rock station", but now it's really a mix of modern rock, pop, indie & dance music
+ * MNM: it's described as the "contemporary hit radio station" of the public broadcast organisation
+ * Q music: a commercial "contemporary hit radio station"  
+
+There is one annoying drawback here: Studio Brussels does a top 30, while all the others do a top 100. 
+   
+Before starting the scrape, I wanted to make sure that I was allowed to do so using the rOpenSci robotstxt package:
+
+```{r message=FALSE, warning=FALSE, results="hold"}
+#Webscraping etiquette: am i allowed to scrape this site?
+robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
+robotstxt::paths_allowed("https://mnm.be/mnm50/dezesongstemdejijhetafgelopenjaartvaakstdemnm50")
+robotstxt::paths_allowed("https://open.spotify.com/embed/user/radio1be/playlist/5aeEaRJfIFF6lsxoN2IbRD")
+robotstxt::paths_allowed("https://qmusic.be/hitlijsten/favoriete-100-2017")
+```
+
+
+<br>
+
+Loading all the packages needed:
+
+```{r message=FALSE, warning=FALSE}
+#for scraping
+library(rvest)
+library(xml2)
+
+#for cleanup and data manipulation
+library(stringr)
+library(dplyr)
+library(tidyr)
+
+#for graphing
+library(ggplot2)
+```
+
+<br>
+
+# Bad luck in normal scraping...
+Trying the usual routine did not lead to any information. I used the "Inspect Element" opion in my browser but no matter what I did no info was obtained.
+
+```{r}
+#usual method
+read_html("https://stubru.be/music/arcadefireopeenindeafrekening2017") %>%
+  html_nodes(css=".song-title")
+```
+
+The issue is that the website is rendered through Javascript so there is no information yet when scraping. After a bit of googling I found [a tutorial](https://www.datacamp.com/community/tutorials/scraping-javascript-generated-data-with-r) that had all the answers I needed. 
+
+
+<br>
+
+# Scraping Javascript rendered websites
+Through `phantomJS` you can create a local copy of the website, which is available for scraping afterwards.  
+I opened a normal notepad and saved the following as `scrape_stubu.js`:
+
+```
+var webPage = require('webpage');
+var page = webPage.create();
+
+var fs = require('fs');
+var path = 'scrape_stubru.html'
+
+page.open('https://stubru.be/music/arcadefireopeenindeafrekening2017', function (status) {
+  var content = page.content;
+  fs.write(path,content,'w')
+  phantom.exit();
+});
+```
+<br>
+
+Afterwards, you can use a `system` command in R to run the script and return a local html version. You need `phantomJS` installed to do this, but you can easily install it form [here](http://phantomjs.org/download.html).
+
+```{r eval=FALSE}
+#generate local copies of all required websites
+system("./phantomjs/bin/phantomjs scrape_stubru.js")
+system("./phantomjs/bin/phantomjs scrape_radio1.js")
+system("./phantomjs/bin/phantomjs scrape_qmusic.js")
+system("./phantomjs/bin/phantomjs scrape_mnm.js")
+```
+<br>
+
+# Scraping the data
+
+Many of the websites had quite similar structures so I wrote a function to extract the ranking, artist and title from the website and return it as a dataframe.
+```{r}
+#function to scrap info
+scrape_music <- function(html, css_artist, css_title, css_ranking) {
+  html_page <- read_html(html)
+  
+  #extracting song info
+  artist <- html_page %>%
+    html_nodes(css = css_artist) %>%
+    html_text() %>%
+    tolower()
+  
+  #extracting artist info
+  title <- html_page %>%
+    html_nodes(css = css_title) %>%
+    html_text() %>%
+    tolower()
+  
+  #extracting ranking
+  ranking <- html_page %>%
+    html_nodes(css = css_ranking) %>%
+    html_text() %>%
+    as.numeric()
+  
+  #making a dataframe
+  df <- data.frame(ranking, artist, title, stringsAsFactors = FALSE)
+  return(df)
+}
+```
+<br>
+
+Using the function, three radio stations were easily scraped.
+Qmusic needed a little bit of `stringr` to remove a few "/n" signs.
+```{r}
+#scraping studio brussels
+stubru <- scrape_music(html = "scrape_stubru.html", css_artist = ".song-title",
+                            css_title = ".song-name", css_ranking=".song-position")
+colnames(stubru) <- c("stubru_ranking", "artist", "title")
+
+#scraping mnm
+mnm <- scrape_music(html = "scrape_mnm.html", css_artist = ".song-name",
+                       css_title = ".song-title", css_ranking=".song-position")
+colnames(mnm) <- c("mnm_ranking", "artist", "title")
+
+#scraping mnm
+qmusic <- scrape_music(html = "scrape_qmusic.html", css_artist = ".title-bar",
+                    css_title = ".subtitle", css_ranking=".hitlist-position")
+colnames(qmusic) <- c("qmusic_ranking", "artist", "title")
+qmusic$artist <- str_replace_all(qmusic$artist, "\\\n", "")
+qmusic$title <- str_replace_all(qmusic$title, "\\\n", "")
+```
+<br>
+
+Radio 1 was the trickiest. They didn't actually have a website that listed the songs, they just referred to a spotify playlist. I know Spotify has an API to make life easier but as I had been scraping from scratch, I just wanted to continue this way. I could not find seperate CSS nodes for artist and title, but there was CSS node that contained everything:
+
+```{r}
+#scrape the local site
+radio1_html <- read_html("scrape_radio1.html")
+
+
+#extract the song info
+radio1_extract <- radio1_html %>%
+  html_nodes(css =".track-row") %>%
+  html_text() %>%
+  tolower() %>%
+  as.data.frame()
+
+#cleaning up the dataframe-
+radio1 <- tidyr::separate(radio1_extract, 1, into= c("radio1_ranking","title", "artist"), sep="\n")
+radio1$title <- str_trim(radio1$title, side="both")
+radio1$artist <- str_trim(radio1$artist, side="both")
+radio1$artist <- str_replace(radio1$artist, "[0-9]+:[0-9]{2}", "")
+radio1$radio1_ranking <- as.numeric(radio1$radio1_ranking)
+```
+<br>
+
+# Comparing the radio stations
+
+I wrote a short function that compares the two dataframes via `semi_join()` and then pastes a short sentence together with `paste()`. Not the most ingenious solution, but fast and useful enough. 
+  
+```{r, results="hold", echo=FALSE}
+
+compare_songs <- function(x, y, name.x, name.y, warning=NULL) {
+  count <- x %>%
+    semi_join(y, by="title") %>%
+    count()
+  
+  paste("Songs in common between", name.x, "and", name.y, ":", count, warning)
+}
+```
+<br>
+
+## Radio 1
+
+Regarding Radio 1, I would expect some overlap with Studio Brussels (because they have the softer indie and rock music in common), and very little overlap with the pop hit stations.
+
+```{r, results="hold", echo=FALSE}
+compare_songs(radio1, stubru, "Radio1", "Studio Brussels", "(out of 30)")
+compare_songs(radio1, mnm, "Radio1", "MNM")
+compare_songs(radio1, qmusic, "Radio1", "Qmusic")
+```
+
+I was a bit surprised by this plot. There are two songs that did incredibly well for both audiences: Bazart (a Belgian pop-rock group): not a big surprise to mfe. But I had not expected Kendrick Lamar to do so well for both audiences.  
+  
+12 others songs are both present. Most of those are not a huge surprise: Arcade Fire, the XX, Coldplay, Elbow, ... But then here is Coely, a Belgian rap singer, scoring very high with the Radio 1 audience. Another surprise. I had no clue that rap was so popular on Radio 1.
+
+```{r echo=FALSE}
+#plotting stubru versus radio 1
+radio1 %>%
+  inner_join(stubru, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=radio1_ranking, y=stubru_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
+  scale_x_reverse(name = "Radio 1 ranking", limits=c(110,0), breaks=c(0, 25, 50,75, 100)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
+  ggtitle("Comparing Radio 1 and Studio Brussels")
+```
+
+12 songs in common between Radio 1 and its sister-station where pophits rule (MNM), but none of them score really high for both audiences.  
+Again another rap song is doing well for the radio 1 audience (Drake) though. 
+
+```{r echo=FALSE}
+#plotting stubru versus radio 1
+radio1 %>%
+  inner_join(mnm, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=radio1_ranking, y=mnm_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "MNM ranking") +
+  scale_x_reverse(name = "Radio 1 ranking", limits=c(110,0), breaks=c(0, 25, 50,75, 100)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
+  ggtitle("Comparing Radio 1 and MNM")
+```
+
+The least overlap is between Radio 1 and the commerical hitradio Qmusic. I would have been stunned if it was any other way: 9 songs in common out of a 100, and none of those 9 are high in both hitlists. Rag'n'Bone man isthe highest finding itself about midway in both lists.
+
+```{r echo=FALSE}
+#plotting stubru versus radio 1
+radio1 %>%
+  inner_join(qmusic, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=radio1_ranking, y=qmusic_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "Qmusic ranking") +
+  scale_x_reverse(name = "Radio 1 ranking", limits=c(110,0), breaks=c(0, 25, 50,75, 100)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
+  ggtitle("Comparing Radio 1 and Qmusic")
+```
+
+
+## Studio Brussels
+
+As expected, there is most overlap between Studio Brussels and Radio1. Both pophit radios show less than 25% common songs.
+
+```{r, results="hold", echo=FALSE}
+compare_songs(stubru, radio1, "Studio Brussels", "Radio1", "(out of 30)")
+compare_songs(stubru, mnm, "Studio Brussels", "MNM", "(out of 30)")
+compare_songs(stubru, qmusic, "Studio Brussels", "Qmusic", "(out of 30)")
+```
+
+
+Versus the hitradios there are 5 to 7 songs in common. Ed Sheeran seems to do well everywhere. 
+
+```{r echo=FALSE}
+#plotting stubru versus radio 1
+stubru %>%
+  inner_join(mnm, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=stubru_ranking, y=mnm_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "MNM ranking") +
+  scale_x_reverse(name = "Studio Brussels ranking", limits=c(35,0), breaks=c(0, 10, 20,30)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
+  ggtitle("Comparing Studio Brussels and MNM")
+```
+
+
+
+```{r echo=FALSE}
+#plotting stubru versus radio 1
+stubru %>%
+  inner_join(qmusic, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=stubru_ranking, y=qmusic_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "Qmusic ranking") +
+  scale_x_reverse(name = "Studio Brussels ranking", limits=c(35,0), breaks=c(0, 10, 20,30)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
+  ggtitle("Comparing Studio Brussels and Qmusic")
+```
+
+
+
+## MNM and Q-music
+
+Lastly, both hit radios against each other: I'm expecting massive overlap between these two, but how massive exactly?  
+Indeed a massive 61 songs in common.
+
+
+```{r, results="hold", echo=FALSE}
+compare_songs(mnm, qmusic, "MNM", "Qmusic")
+compare_songs(mnm, radio1, "MNM", "Radio1")
+compare_songs(mnm, stubru, "MNM", "Studio Brussels")
+compare_songs(qmusic, radio1, "Qmusic", "Radio1")
+compare_songs(qmusic, stubru, "Qmusic", "Studio Brussels")
+```
+
+So much overlap, it's hardly readable, and espcially the upper right corner is very populated, confirming that both audiences like the same 2017 songs.
+
+```{r echo=FALSE}
+#plotting stubru versus radio 1
+mnm %>%
+  inner_join(qmusic, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=mnm_ranking, y=qmusic_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "Qmusic ranking") +
+  scale_x_reverse(name = "MNM ranking", limits=c(110,0), breaks=c(0, 25, 50,75, 100)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
+  ggtitle("Comparing MNM and Qmusic")
+```
+<br>
+
+The biggest surprise for me is still the mystery of this Radio 1 list. Clearly I have no clue, even though I do listen to it on a weekly basis. I think my next project will be scraping the Radio 1 playlist just to understand what music they play when I'm not listenen...

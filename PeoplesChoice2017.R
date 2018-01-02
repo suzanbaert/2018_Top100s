@@ -53,6 +53,13 @@ scrape_music <- function(html, css_artist, css_title, css_ranking) {
 #Studio Brussels
 #######
 
+
+#not working version
+read_html("https://stubru.be/music/arcadefireopeenindeafrekening2017") %>%
+  html_nodes(css=".song-title")
+
+
+
 #generated a phantomJS script to create a rendered local html site
 system("./phantomjs/bin/phantomjs scrape_stubru.js")
 
@@ -60,7 +67,7 @@ system("./phantomjs/bin/phantomjs scrape_stubru.js")
 #scraping studio brussels
 stubru <- scrape_music(html = "scrape_stubru.html", css_artist = ".song-title",
                             css_title = ".song-name", css_ranking=".song-position")
-colnames(studiobrussels) <- c("stubru_ranking", "artist", "title")
+colnames(stubru) <- c("stubru_ranking", "artist", "title")
 
 
 
@@ -81,7 +88,7 @@ colnames(mnm) <- c("mnm_ranking", "artist", "title")
 
 
 #######
-#MNM
+#QMUSIC
 #######
 
 #generated a phantomJS script to create a rendered local html site
@@ -136,18 +143,52 @@ stubru %>%
   semi_join(mnm, by="title") %>%
   semi_join(qmusic, by="title")
 
+radio1 %>%
+  semi_join(mnm, by="title") %>%
+  semi_join(qmusic, by="title")
 
-stubru %>%
-  semi_join(radio1, by="title")
+
+
+st_ra <- stubru %>%
+  semi_join(radio1, by="title") %>%
+  count()
+
+paste("Studio Brussels and Radio1 have", st_ra, "songs in common (out of 30)")
 
 stubru %>%
   semi_join(mnm, by="title")
 
+stubru %>%
+  semi_join(qmusic, by="title")
+
+
+
 mnm %>%
   semi_join(radio1, by="title")
 
 mnm %>%
-  semi_join(qmusic, by="title")
+  semi_join(qmusic, by="title") %>%
+  count()
+
+
+compare_songs <- function(x, y, name.x, name.y) {
+  count <- x %>%
+    semi_join(y, by="title") %>%
+    count()
+  
+  paste("Songs in common between", name.x, "and", name.y, ":", count)
+  }
+
+compare_songs(stubru, mnm, "Studio Brussels", "MNM")
+
+#studio Brussels versus Radio1
+sr <- stubru %>%
+  semi_join(radio1, by="title") %>%
+  count()
+paste("Songs in common between Studio Brussels and Radio1:", sr, "(out of 30)")
+
+
+
 
 
 #joining them all.
@@ -186,6 +227,18 @@ stubru %>%
     ggtitle("Comparing Studio Brussels versus Radio1")
 
 
+
+#plotting stubru versus radio 1
+radio1 %>%
+  inner_join(stubru, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=radio1_ranking, y=stubru_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_y_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
+  scale_x_reverse(name = "Radio 1 ranking") +
+  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+  ggtitle("Comparing Radio 1 and Studio Brussels")
+
 stubru %>%
   inner_join(radio1, by="title") %>%
   unite(combo, artist.x, title, sep=" - ") %>%
@@ -220,3 +273,16 @@ stubru %>%
   scale_y_reverse(name = "MNM ranking") +
   geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
   ggtitle("Comparing Studio Brussels versus MNM")
+
+
+#plotting stubru versus mnm
+qmusic %>%
+  inner_join(mnm, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=qmusic_ranking, y=mnm_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_x_reverse(name = "Q music ranking") +
+  scale_y_reverse(name = "MNM ranking") +
+  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+  ggtitle("Comparing Q music versus MNM")
+
