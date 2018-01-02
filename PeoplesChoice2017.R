@@ -7,6 +7,10 @@ library(stringr)
 library(dplyr)
 library(tidyr)
 
+#for graphing
+library(ggplot2)
+library(patchwork)
+
 
 #Webscraping etiquette: am i allowed to scrape this site?
 robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
@@ -155,24 +159,50 @@ all_stations_messy$artistjoin <- ifelse(is.na(all_stations_messy$artist.x),
 str(all_stations)
 
 
-#quick plot
-library(ggplot2)
-ggplot(all_stations) +
-  geom_point(aes(x=stubru_ranking, y=radio1_ranking)) +
-  scale_x_reverse(name = "Studio Brussels ranking") +
-  scale_y_reverse(name = "Radio 1 ranking")
+
+#plotting stubru versus radio 1
+stubru %>%
+  inner_join(radio1, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=stubru_ranking, y=radio1_ranking, label = combo))+
+    geom_point(colour="cadetblue4") +
+    scale_x_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
+    scale_y_reverse(name = "Radio 1 ranking") +
+    geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+    ggtitle("Comparing Studio Brussels versus Radio1")
 
 
 stubru %>%
   inner_join(radio1, by="title") %>%
-  ggplot()+
-    geom_point(aes(x=stubru_ranking, y=radio1_ranking)) +
-    scale_x_reverse(name = "Studio Brussels ranking") +
-    scale_y_reverse(name = "Radio 1 ranking") +
-    geom_text(aes(x=stubru_ranking, y=radio1_ranking, label = title))
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=stubru_ranking, y=radio1_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_x_reverse(name = "Studio Brussels ranking", limits=c(30,15)) +
+  scale_y_reverse(name = "Radio 1 ranking", limits=c(100,60)) +
+  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+  ggtitle("Comparing Studio Brussels versus Radio1 (zoomed on mid section")
 
 
-all_stations %>%
-  filter(title == "humble.")
 
-  
+#pltting mnm versus radio 1
+mnm %>%
+  inner_join(radio1, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=mnm_ranking, y=radio1_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_x_reverse(name = "MNM ranking") +
+  scale_y_reverse(name = "Radio 1 ranking") +
+  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+  ggtitle("Comparing MNM versus Radio1")
+
+
+#plotting stubru versus mnm
+stubru %>%
+  inner_join(mnm, by="title") %>%
+  unite(combo, artist.x, title, sep=" - ") %>%
+  ggplot(aes(x=stubru_ranking, y=mnm_ranking, label = combo))+
+  geom_point(colour="cadetblue4") +
+  scale_x_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
+  scale_y_reverse(name = "MNM ranking") +
+  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+  ggtitle("Comparing Studio Brussels versus MNM")
