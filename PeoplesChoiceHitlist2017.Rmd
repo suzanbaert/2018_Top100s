@@ -1,34 +1,25 @@
 ---
-title: "PeoplesChoiceHitlist2017"
+title: "PeoplesChoiceHitChart2017"
 output: html_document
 ---
+<br>
 
-At the end of the year, everyone seems to be making lists. And radio stations are no exceptions.  
-Many of our radiostation have a weekly "people's choice" hitlist. Throughout the week, people submit their top 3 recent songs and that gets turned into a hitlist. At the end of the year, they collapse all those weekly lists into a Year list.  
-I find this one quite interesting because it's not dependent on what people actually bought, but at what the audience of those radio stations want to hear more of.
+At the end of the year, everyone is making lists. And radio stations are no exceptions.  
+Many of our radio stations have a weekly "people's choice" hit chart. Throughout the week, people submit their top 3 recent songs, and every week those votes turn into a hit chart. At the end of the year, they collapse all those weekly charts into a larger one covering the entire year.  
+  
+I find this one quite interesting: it's not dependent on what music people buy, it's determined by what the audience of that station wants to hear. So what are the differences between these stations? And do they match up with what I would expect?
   
 <br>
 
-# About the data
-I took  different radio stations:
+## About the data
+I took 4 different radio stations:
 
- * Radio 1: The most serious of our public broadcast stations. It's aimed at current affairs, politics, news, ... 
- * Studio Brussels: Formerly known as the "rock station", but now it's really a mix of modern rock, pop, indie & dance music
- * MNM: it's described as the "contemporary hit radio station" of the public broadcast organisation
- * Q music: a commercial "contemporary hit radio station"  
+ * Radio 1: The most serious of our public broadcast stations. It's aimed at current affairs, politics, news, ... When I think of Radio 1 music, I think of Paul Simon, Aretha Franklin, Nathaniel Ratecliff and Elbow. 
+ * Studio Brussels: Formerly known as the "rock station", but now it's really a mix of modern rock, pop, indie & dance music. 
+ * MNM: Described as the "contemporary hit radio station" of the public broadcast organisation
+ * Q music: A commercial "contemporary hit radio station"  
 
-There is one annoying drawback here: Studio Brussels does a top 30, while all the others do a top 100. 
-   
-Before starting the scrape, I wanted to make sure that I was allowed to do so using the rOpenSci robotstxt package:
-
-```{r message=FALSE, warning=FALSE, results="hold"}
-#Webscraping etiquette: am i allowed to scrape this site?
-robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
-robotstxt::paths_allowed("https://mnm.be/mnm50/dezesongstemdejijhetafgelopenjaartvaakstdemnm50")
-robotstxt::paths_allowed("https://open.spotify.com/embed/user/radio1be/playlist/5aeEaRJfIFF6lsxoN2IbRD")
-robotstxt::paths_allowed("https://qmusic.be/hitlijsten/favoriete-100-2017")
-```
-
+There is one major and annoying drawback in this dataset: Studio Brussels does a top 30, while all the others do a top 100. 
 
 <br>
 
@@ -38,6 +29,7 @@ Loading all the packages needed:
 #for scraping
 library(rvest)
 library(xml2)
+library(jsonlite)
 
 #for cleanup and data manipulation
 library(stringr)
@@ -47,11 +39,27 @@ library(tidyr)
 #for graphing
 library(ggplot2)
 ```
-
 <br>
 
-# Bad luck in normal scraping...
-Trying the usual routine did not lead to any information. I used the "Inspect Element" opion in my browser but no matter what I did no info was obtained.
+
+
+
+## Web Scraping Etiquette
+Before starting the scrape, I wanted to make sure that I was allowed to do so using the rOpenSci robotstxt package:
+
+```{r message=FALSE, warning=FALSE, results="hold"}
+#Webscraping etiquette: am i allowed to scrape this site?
+robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
+robotstxt::paths_allowed("https://mnm.be/mnm50/dezesongstemdejijhetafgelopenjaartvaakstdemnm50")
+robotstxt::paths_allowed("https://radio1.be/vox-100-de-lijst-2017")
+robotstxt::paths_allowed("https://qmusic.be/hitlijsten/favoriete-100-2017")
+```
+<br>
+
+
+
+## Bad luck with the standard scraping procedures...
+A quick search showed no APIs for any of these websites, so I started with `rvest` and the usual CSS nodes routine. Unfortunately no CSS element or XPATH gave me any useful information.
 
 ```{r}
 #usual method
@@ -59,13 +67,13 @@ read_html("https://stubru.be/music/arcadefireopeenindeafrekening2017") %>%
   html_nodes(css=".song-title")
 ```
 
-The issue is that the website is rendered through Javascript so there is no information yet when scraping. After a bit of googling I found [a tutorial](https://www.datacamp.com/community/tutorials/scraping-javascript-generated-data-with-r) that had all the answers I needed. 
-
-
+The issue is that the website is rendered through Javascript, and R is scraping the website before the content is loaded. After a bit of googling I found [a tutorial](https://www.datacamp.com/community/tutorials/scraping-javascript-generated-data-with-r) that had all the answers I needed. 
 <br>
 
-# Scraping Javascript rendered websites
-Through `phantomJS` you can create a local copy of the website, which is available for scraping afterwards.  
+
+
+## Scraping Javascript rendered websites
+Through `phantomJS` you can create a representation of the website after Javascript loaded all the data. Afterwards you can scrape the local version.  
 I opened a normal notepad and saved the following as `scrape_stubu.js`:
 
 ```
@@ -83,7 +91,7 @@ page.open('https://stubru.be/music/arcadefireopeenindeafrekening2017', function 
 ```
 <br>
 
-Afterwards, you can use a `system` command in R to run the script and return a local html version. You need `phantomJS` installed to do this, but you can easily install it form [here](http://phantomjs.org/download.html).
+Next, you use a `system` command in R to run the script and return a local html version. You need `phantomJS` installed to do this, but you can easily install it form [here](http://phantomjs.org/download.html).
 
 ```{r eval=FALSE}
 #generate local copies of all required websites
@@ -94,7 +102,7 @@ system("./phantomjs/bin/phantomjs scrape_mnm.js")
 ```
 <br>
 
-# Scraping the data
+## Scraping the data
 
 Many of the websites had quite similar structures so I wrote a function to extract the ranking, artist and title from the website and return it as a dataframe.
 ```{r}
@@ -127,8 +135,7 @@ scrape_music <- function(html, css_artist, css_title, css_ranking) {
 ```
 <br>
 
-Using the function, three radio stations were easily scraped.
-Qmusic needed a little bit of `stringr` to remove a few "/n" signs.
+Using the function above, three radio stations were easily scraped. Two of them needed no additional clean-up. Only Qmusic was a bit differently set up, and needed some stringr work to remove a few "/n" signs.
 ```{r}
 #scraping studio brussels
 stubru <- scrape_music(html = "scrape_stubru.html", css_artist = ".song-title",
@@ -149,32 +156,27 @@ qmusic$title <- str_replace_all(qmusic$title, "\\\n", "")
 ```
 <br>
 
-Radio 1 was the trickiest. They didn't actually have a website that listed the songs, they just referred to a spotify playlist. I know Spotify has an API to make life easier but as I had been scraping from scratch, I just wanted to continue this way. I could not find seperate CSS nodes for artist and title, but there was CSS node that contained everything:
+Radio 1 was by far the trickiest. Even after rendering it through `phantomJS` it kept returning no content in any of the CSS nodes referring to the table containing the hit chart. Digging in the `inspect element` view of the brower I found out that the table was sourced from yet another page, but even on that page phantomJS didn't do the job. (If anyone can tell me why, please do!)  
+Luckily a few curses later, I discovered an API link in the source code of the webpage.  
+I was about to skip Radio 1 all together, but there it was...
 
 ```{r}
-#scrape the local site
-radio1_html <- read_html("scrape_radio1.html")
+library(jsonlite)
+content2 <- fromJSON("https://hitlijst.vrt.be/api/lists/3594.json")
+str(content2$songs, max.level=1)
 
+title <- tolower(content2$songs$title)
+artist <- tolower(content2$songs$name)
+radio1_ranking <- as.numeric(content2$songs$position)
 
-#extract the song info
-radio1_extract <- radio1_html %>%
-  html_nodes(css =".track-row") %>%
-  html_text() %>%
-  tolower() %>%
-  as.data.frame()
-
-#cleaning up the dataframe-
-radio1 <- tidyr::separate(radio1_extract, 1, into= c("radio1_ranking","title", "artist"), sep="\n")
-radio1$title <- str_trim(radio1$title, side="both")
-radio1$artist <- str_trim(radio1$artist, side="both")
-radio1$artist <- str_replace(radio1$artist, "[0-9]+:[0-9]{2}", "")
-radio1$radio1_ranking <- as.numeric(radio1$radio1_ranking)
+radio1 <- data.frame(radio1_ranking, title, artist, stringsAsFactors = FALSE)
 ```
 <br>
 
-# Comparing the radio stations
 
-I wrote a short function that compares the two dataframes via `semi_join()` and then pastes a short sentence together with `paste()`. Not the most ingenious solution, but fast and useful enough. 
+## Comparing the radio stations
+
+I wrote a short function that compares the two dataframes via `semi_join()` and then pastes a short sentence together with `paste`. Not the most ingenious solution, but fast and useful enough. 
   
 ```{r, results="hold", echo=FALSE}
 
@@ -183,24 +185,22 @@ compare_songs <- function(x, y, name.x, name.y, warning=NULL) {
     semi_join(y, by="title") %>%
     count()
   
-  paste("Songs in common between", name.x, "and", name.y, ":", count, warning)
+  paste0("Songs in common between ", name.x, " and ", name.y, ": ", count, warning)
 }
 ```
 <br>
 
 ## Radio 1
 
-Regarding Radio 1, I would expect some overlap with Studio Brussels (because they have the softer indie and rock music in common), and very little overlap with the pop hit stations.
+Regarding Radio 1, I would expect some moderate overlap with Studio Brussels because they have the softer indie and rock music in common. With the two pop hit
 
 ```{r, results="hold", echo=FALSE}
-compare_songs(radio1, stubru, "Radio1", "Studio Brussels", "(out of 30)")
+compare_songs(radio1, stubru, "Radio1", "Studio Brussels", " (out of 30)")
 compare_songs(radio1, mnm, "Radio1", "MNM")
 compare_songs(radio1, qmusic, "Radio1", "Qmusic")
 ```
 
-I was a bit surprised by this plot. There are two songs that did incredibly well for both audiences: Bazart (a Belgian pop-rock group): not a big surprise to mfe. But I had not expected Kendrick Lamar to do so well for both audiences.  
-  
-12 others songs are both present. Most of those are not a huge surprise: Arcade Fire, the XX, Coldplay, Elbow, ... But then here is Coely, a Belgian rap singer, scoring very high with the Radio 1 audience. Another surprise. I had no clue that rap was so popular on Radio 1.
+
 
 ```{r echo=FALSE}
 #plotting stubru versus radio 1
@@ -209,8 +209,8 @@ radio1 %>%
   unite(combo, artist.x, title, sep=" - ") %>%
   ggplot(aes(x=radio1_ranking, y=stubru_ranking, label = combo))+
   geom_point(colour="cadetblue4") +
-  scale_y_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
-  scale_x_reverse(name = "Radio 1 ranking", limits=c(110,0), breaks=c(0, 25, 50,75, 100)) +
+  scale_y_reverse(name = "Studio Brussels ranking") +
+  scale_x_reverse(name = "Radio 1 ranking", limits=c(105,-10), breaks=c(0, 25, 50,75, 100)) +
   geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4") +
   ggtitle("Comparing Radio 1 and Studio Brussels")
 ```

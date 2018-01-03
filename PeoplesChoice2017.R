@@ -9,16 +9,13 @@ library(tidyr)
 
 #for graphing
 library(ggplot2)
-library(patchwork)
 
 
 #Webscraping etiquette: am i allowed to scrape this site?
 robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
 robotstxt::paths_allowed("https://mnm.be/mnm50/dezesongstemdejijhetafgelopenjaartvaakstdemnm50")
-robotstxt::paths_allowed("https://open.spotify.com/embed/user/radio1be/playlist/5aeEaRJfIFF6lsxoN2IbRD")
 robotstxt::paths_allowed("https://qmusic.be/hitlijsten/favoriete-100-2017")
-
-
+robotstxt::paths_allowed("https://radio1.be/vox-100-de-lijst-2017")
 
 #function to scrap info
 scrape_music <- function(html, css_artist, css_title, css_ranking) {
@@ -64,10 +61,56 @@ read_html("https://stubru.be/music/arcadefireopeenindeafrekening2017") %>%
 system("./phantomjs/bin/phantomjs scrape_stubru.js")
 
 
+#☻trial
+read_html("scrape_stubru.html")%>%
+  html_nodes(css=".song-title")
+
 #scraping studio brussels
 stubru <- scrape_music(html = "scrape_stubru.html", css_artist = ".song-title",
                             css_title = ".song-name", css_ranking=".song-position")
 colnames(stubru) <- c("stubru_ranking", "artist", "title")
+
+
+##########################
+#Radio1 not via spotify
+##########################
+
+#generated a phantomJS script to create a rendered local html site
+#system("./phantomjs/bin/phantomjs scrape_radio1.js")
+
+#does not work
+# radio1_html <- read_html("scrape_radio1.html")
+# 
+# read_html("scrape_radio1.html") %>%
+#   html_nodes(css=".artist ng-binding") %>%
+#   html_text()
+
+
+#found a playground source 
+#phantomJS did not work
+
+#library(httr)
+
+# response <- GET(url="https://hitlijst.vrt.be/api/lists/3594.json")
+# content <- content(response)
+# 
+# str(content, max.level=2)
+# str(content$songs, max.level=1)
+# 
+# content$songs[1]
+# 
+# fromJSON(response, simplifyVector = TRUE)
+
+
+library(jsonlite)
+content2 <- fromJSON("https://hitlijst.vrt.be/api/lists/3594.json")
+str(content2$songs, max.level=1)
+
+title <- tolower(content2$songs$title)
+artist <- tolower(content2$songs$name)
+radio1_ranking <- as.numeric(content2$songs$position)
+
+radio1 <- data.frame(radio1_ranking, title, artist, stringsAsFactors = FALSE)
 
 
 
@@ -104,36 +147,9 @@ qmusic$title <- str_replace_all(qmusic$title, "\\\n", "")
 
 
 
-#######
-#RADIO 1
-#######
-
-#generated a phantomJS script to create a rendered local html site
-system("./phantomjs/bin/phantomjs scrape_radio1.js")
-
-
-#scrape the local site
-radio1_html <- read_html("scrape_radio1.html")
-
-
-#extract the song info
-radio1_extract <- radio1_html %>%
-  html_nodes(css =".track-row") %>%
-  html_text() %>%
-  tolower() %>%
-  as.data.frame()
-
-#cleaning up the dataframe-
-radio1 <- tidyr::separate(radio1_extract, 1, into= c("radio1_ranking","title", "artist"), sep="\n")
-radio1$title <- str_trim(radio1$title, side="both")
-radio1$artist <- str_trim(radio1$artist, side="both")
-radio1$artist <- str_replace(radio1$artist, "[0-9]+:[0-9]{2}", "")
-radio1$radio1_ranking <- as.numeric(radio1$radio1_ranking)
-
-
-
-
-
+#####################
+# commonalities
+#####################
 
 
 
@@ -218,7 +234,7 @@ str(all_stations)
 #plotting stubru versus radio 1
 stubru %>%
   inner_join(radio1, by="title") %>%
-  unite(combo, artist.x, title, sep=" - ") %>%
+  unite(combo, artist.x, title, sep = " - ") %>%
   ggplot(aes(x=stubru_ranking, y=radio1_ranking, label = combo))+
     geom_point(colour="cadetblue4") +
     scale_x_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
@@ -235,20 +251,9 @@ radio1 %>%
   ggplot(aes(x=radio1_ranking, y=stubru_ranking, label = combo))+
   geom_point(colour="cadetblue4") +
   scale_y_reverse(name = "Studio Brussels ranking", limits=c(32,0)) +
-  scale_x_reverse(name = "Radio 1 ranking") +
-  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
+  scale_x_reverse(name = "Radio 1 ranking", limits=c(110,-10), breaks=c(0,25,50,75,100)) +
+  geom_text(vjust = 0, nudge_y = 0.5, colour="cadetblue4")+
   ggtitle("Comparing Radio 1 and Studio Brussels")
-
-stubru %>%
-  inner_join(radio1, by="title") %>%
-  unite(combo, artist.x, title, sep=" - ") %>%
-  ggplot(aes(x=stubru_ranking, y=radio1_ranking, label = combo))+
-  geom_point(colour="cadetblue4") +
-  scale_x_reverse(name = "Studio Brussels ranking", limits=c(30,15)) +
-  scale_y_reverse(name = "Radio 1 ranking", limits=c(100,60)) +
-  geom_text(vjust = 0, nudge_y = 1, colour="cadetblue4")+
-  ggtitle("Comparing Studio Brussels versus Radio1 (zoomed on mid section")
-
 
 
 #pltting mnm versus radio 1
