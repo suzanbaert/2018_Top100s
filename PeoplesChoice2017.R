@@ -1,6 +1,7 @@
 #for scraping
 library(rvest)
 library(xml2)
+library(jsonlite)
 
 #for cleanup and data manipulation
 library(stringr)
@@ -11,11 +12,17 @@ library(tidyr)
 library(ggplot2)
 
 
+#FOR RERUNNING
+SKIP STRAIGHT TO LINE 171
+
+
+
 #Webscraping etiquette: am i allowed to scrape this site?
 robotstxt::paths_allowed("https://stubru.be/music/arcadefireopeenindeafrekening2017")
 robotstxt::paths_allowed("https://mnm.be/mnm50/dezesongstemdejijhetafgelopenjaartvaakstdemnm50")
 robotstxt::paths_allowed("https://qmusic.be/hitlijsten/favoriete-100-2017")
 robotstxt::paths_allowed("https://radio1.be/vox-100-de-lijst-2017")
+
 
 #function to scrap info
 scrape_music <- function(html, css_artist, css_title, css_ranking) {
@@ -142,15 +149,38 @@ system("./phantomjs/bin/phantomjs scrape_qmusic.js")
 qmusic <- scrape_music(html = "scrape_qmusic.html", css_artist = ".title-bar",
                     css_title = ".subtitle", css_ranking=".hitlist-position")
 colnames(qmusic) <- c("qmusic_ranking", "artist", "title")
-qmusic$artist <- str_replace_all(qmusic$artist, "\\\n", "")
-qmusic$title <- str_replace_all(qmusic$title, "\\\n", "")
+qmusic$title <- gsub("\n", "", qmusic$title)
+qmusic$artist <- gsub("\n", "", qmusic$artist)
+
+
+list <- list(stubru = stubru, radio1 = radio1, qmusic = qmusic, mnm = mnm)
+saveRDS(list, "hitlist_list.RDS")
+
+
+
+
+
+
+
+
+
+####################
+#FOR RERUNNING
+####################
+
+list <- readRDS("hitlist_list.RDS")
+
+radio1 <- list$radio1
+stubru <- list$stubru
+mnm <- list$mnm
+qmusic <- list$qmusic
+
 
 
 
 #####################
 # commonalities
 #####################
-
 
 
 #commonalities
@@ -205,29 +235,6 @@ paste("Songs in common between Studio Brussels and Radio1:", sr, "(out of 30)")
 
 
 
-
-
-#joining them all.
-#can't join artist as well due to inconsistencies in naming artists, see chainsmokers and coldplay as example
-all_stations_messy <- stubru %>%
-  full_join(mnm, by="title") %>%
-  full_join(radio1, by="title")
-
-#if empty take the artist name from the other list
-all_stations_messy$artist.x <- ifelse(!is.na(all_stations_messy$artist.x), all_stations_messy$artist.x, all_stations_messy$artist.y)
-all_stations_messy$artist.x <- ifelse(!is.na(all_stations_messy$artist.x), all_stations_messy$artist.x, all_stations_messy$artist)
-all_stations_messy$artist <- all_stations_messy$artist.x
-
-all_stations <- all_stations_messy %>%
-  select(artist, title, stubru_ranking, mnm_ranking, radio1_ranking)
-
-
-all_stations_messy$artistjoin <- ifelse(is.na(all_stations_messy$artist.x), 
-                                        ifelse(is.na(all_stations_messy$artist.y), all_stations_messy$artist, 
-                                        all_stations_messy$artist.y),
-                                        all_stations_messy$artist.x)
-
-str(all_stations)
 
 
 
